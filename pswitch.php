@@ -13,17 +13,18 @@ function process($argv)
     $config = init();
     in_array('-a', $argv) && addSoftware($config);
     in_array('-s', $argv) && switchSoftware($argv, $config);
+    in_array('-l', $argv) && listSoftware($argv, $config);
     displayHelp();
 }
 
 /**
  * init
  *
- * @param string $path
  * @return array
  */
-function init($path = '/etc/switch.json')
+function init()
 {
+    $path = __DIR__ . DIRECTORY_SEPARATOR . 'switch.json';
     $emptyConfig = [];
     if (file_exists($path)) {
         //decode config json to array
@@ -84,6 +85,10 @@ function addSoftware($config)
     empty($linkDir) && ($linkDir = '/usr/local/bin');
     $linkDir = rtrim($linkDir, '/');
 
+    //make sure symbolic link directory exist
+    if (!is_dir($linkDir)) {
+        error("can't add software, because symbolic link directory doesn't exist");
+    }
 
     //get all file path from software path
     $files = [];
@@ -97,13 +102,19 @@ function addSoftware($config)
         }
         $dir->close();
     } else {
+        if (!file_exists($path)) {
+            error("the file [$path] doesn't exist!");
+        }
         $files[] = $path;
+        $path = dirname($path);
     }
 
     //set all software info
     $info = [];
+    $info['path'] = $path;
     $info['files'] = $files;
     $info['linkDir'] = $linkDir;
+    $info['active'] = 0;
 
     //make sure the software version does not exist or replace it
     if (isset($config[$name][$version])) {
@@ -145,8 +156,11 @@ function switchSoftware($argv, $config)
         if ($softwareName == $name) {
             foreach ($config[$softwareName] as $softwareVersion => $value) {
                 if ($softwareVersion == $version) {
+                    $config[$softwareName][$softwareVersion]['active'] = 1;
                     $info = $value;
                     break;
+                } elseif ($config[$softwareName][$softwareVersion]['active']) {
+                    $oldVersion = $softwareVersion;
                 }
             }
             break;
@@ -158,7 +172,7 @@ function switchSoftware($argv, $config)
 
     //make sure symlink path are writable
     if (!is_writeable($info['linkDir'])) {
-        error('the link path can\' write, check the permission');
+        error("the link path [{$info['linkDir']}] can\'t write, please check the permission");
     }
 
     //link all files of this software
@@ -166,7 +180,65 @@ function switchSoftware($argv, $config)
         if (file_exists($file)) {
             linkSoftware($name, $file, $info['linkDir'], $config);
         } else {
-            echo "\033[0;31m Warning: file [ $file ] not found, please check it." . PHP_EOL;
+            echo "\e[0;31m Warning: file [ $file ] not found, please check it." . PHP_EOL;
+        }
+    }
+
+    //set the old version inactive
+    if (isset($softwareName) && isset($oldVersion)) {
+        $config[$softwareName][$oldVersion]['active'] = 0;
+    }
+    saveConfig($config);
+
+    exit(0);
+}
+
+/**
+ * show the software list
+ *
+ * @param $argv
+ * @param $config
+ */
+function listSoftware($argv, $config)
+{
+    //if user set the software name, only output that info
+    if (isset($argv[2]) && isset($config[$argv[2]])) {
+        $temp = $config[$argv[2]];
+        $config = [];
+        $config[$argv[2]] = $temp;
+    }
+
+    //output all software info or user selected software info
+    foreach ($config as $name => $software) {
+        echo $name . PHP_EOL;
+
+        //get the max string length to format
+        $padLen = array_reduce($software, function ($previousMax, $info) {
+            $max = max([strlen($info['path']), strlen($info['linkDir'])]);
+            $max = ($max > $previousMax) ? $max : $previousMax;
+            return $max;
+        });
+
+        //output the header
+        echo "\t " . str_pad('version', $padLen) . ' ' .
+            str_pad('path', $padLen) . ' ' .
+            str_pad('link', $padLen) . ' ' .
+            str_pad('active', $padLen) . PHP_EOL;
+
+        //output the info
+        foreach ($software as $version => $info) {
+            //format the info
+            array_walk($info, function ($value, $key) use (&$info, $padLen) {
+                if (is_string($value)) {
+                    $info[$key] = str_pad($value, $padLen);
+                }
+            });
+            $version = str_pad($version, $padLen);
+            if ($info['active']) {
+                echo "\e[0;32m\t $version {$info['path']} {$info['linkDir']} {$info['active']}" . PHP_EOL;
+            } else {
+                echo "\033[0m\t $version {$info['path']} {$info['linkDir']} {$info['active']}" . PHP_EOL;
+            }
         }
     }
 
@@ -183,7 +255,7 @@ function linkSoftware($softwareName, $target, $linkDir, $config)
     if (checkSymlink($softwareName, $link, $config)) {
         symlink($target, $link);
     } else {
-        echo "\033[0;31m Warning: can't create symlink because $link exist" . PHP_EOL;
+        echo "\e[0;31m Warning: can't create symlink because $link exist" . PHP_EOL;
     }
 }
 
@@ -194,7 +266,7 @@ function checkSymlink($softwareName, $link, $config)
             return false;
         }
         $realPath = readlink($link);
-        //if this link in config, delete it
+        //if this link in config, delete it and return true
         $inConfig = false;
         foreach ($config[$softwareName] as $version) {
             if (!$inConfig) {
@@ -212,8 +284,9 @@ function checkSymlink($softwareName, $link, $config)
     return true;
 }
 
-function saveConfig($config, $path = '/etc/switch.json')
+function saveConfig($config)
 {
+    $path = __DIR__ . DIRECTORY_SEPARATOR . 'switch.json';
     $config = json_encode($config, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     file_put_contents($path, $config);
 }
