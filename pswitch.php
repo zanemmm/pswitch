@@ -14,6 +14,8 @@ function process($argv)
     in_array('-a', $argv) && addSoftware($config);
     in_array('-s', $argv) && switchSoftware($argv, $config);
     in_array('-l', $argv) && listSoftware($argv, $config);
+    in_array('-d', $argv) && deleteSoftware($argv, $config);
+    in_array('-v', $argv) && version();
     displayHelp();
 }
 
@@ -50,17 +52,31 @@ PSWITCH Help
 ------------------
 Options
 --help           this help
--a               add software
+-a               add software version
 -s               switch software version. 
                  e.g: pswitch -s [software name] [software version]
 -l               show the software list
--v               show this version
+-d               delete software version
+                 e.g: pswitch -d [software name] [software version]
+-v               show PSWITCH version
 
 EOF;
 }
 
 /**
- * add software info to config
+ * show PSWITCH version
+ */
+function version()
+{
+    echo <<<EOF
+PSWITCH version 0.0.1
+
+EOF;
+    exit(0);
+}
+
+/**
+ * add software version info to config
  *
  * @param $config
  */
@@ -172,7 +188,7 @@ function switchSoftware($argv, $config)
 
     //make sure symlink path are writable
     if (!is_writeable($info['linkDir'])) {
-        error("the link path [{$info['linkDir']}] can\'t write, please check the permission");
+        error("the link path [{$info['linkDir']}] can't write, please check the permission");
     }
 
     //link all files of this software
@@ -212,17 +228,17 @@ function listSoftware($argv, $config)
     foreach ($config as $name => $software) {
         echo $name . PHP_EOL;
 
-        //get the max string length to format
+        //get the max string length to format & min length 20
         $padLen = array_reduce($software, function ($previousMax, $info) {
             $max = max([strlen($info['path']), strlen($info['linkDir'])]);
             $max = ($max > $previousMax) ? $max : $previousMax;
             return $max;
-        });
+        }, 20);
 
         //output the header
         echo "\t " . str_pad('version', $padLen) . ' ' .
             str_pad('path', $padLen) . ' ' .
-            str_pad('link', $padLen) . ' ' .
+            str_pad('link directory', $padLen) . ' ' .
             str_pad('active', $padLen) . PHP_EOL;
 
         //output the info
@@ -241,6 +257,46 @@ function listSoftware($argv, $config)
             }
         }
     }
+
+    exit(0);
+}
+
+function deleteSoftware($argv, $config)
+{
+    //make sure $argv & $config are right
+    if ((count($argv) != 4) || ($argv[1] != '-d')) {
+        error('wrong input! e.g: pswitch -d [software name] [software version]');
+    }
+    $name = $argv[2];
+    $version = $argv[3];
+    if (!isset($config[$name][$version])) {
+        error('this software version is not in config!');
+    }
+
+    //delete link
+    $info = $config[$name][$version];
+    if ($info['active']) {
+        //make sure symlink path are writable
+        if (!is_writeable($info['linkDir'])) {
+            error("the link path [{$info['linkDir']}] can't write, please check the permission");
+        }
+
+        foreach ($info['files'] as $file) {
+            $temp = explode('/', $file);
+            $link = $info['linkDir'] . '/' . end($temp);
+            if (!checkSymlink($name, $link, $config)) {
+                echo "\e[0;31m Warning: can't delete link [$link]" . PHP_EOL;
+            }
+        }
+    }
+
+    //delete the version info & if this software is empty, delete it
+    unset($config[$name][$version]);
+    if (empty($config[$name])) {
+        unset($config[$name]);
+    }
+
+    saveConfig($config);
 
     exit(0);
 }
