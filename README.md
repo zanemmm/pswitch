@@ -1,4 +1,8 @@
-# Guide
+# Description
+
+Pswitch is a tool for switching software versions.
+
+Replace update-alternatives in non-debian distro.
 
 ## Requirement
 
