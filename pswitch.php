@@ -56,6 +56,7 @@ Options
 -s               switch software version. 
                  e.g: pswitch -s [software name] [software version]
 -l               show the software list
+                 e.g: pswitch -l / pswitch -l [software name]
 -d               delete software version
                  e.g: pswitch -d [software name] [software version]
 -v               show PSWITCH version
@@ -317,7 +318,8 @@ function linkSoftware($softwareName, $target, $linkDir, $config)
 
 function checkSymlink($softwareName, $link, $config)
 {
-    if (file_exists($link)) {
+    //file_exists() will return FALSE for broken links
+    if (file_exists($link) || is_link($link)) {
         if (!is_link($link)) {
             return false;
         }
