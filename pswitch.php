@@ -227,7 +227,7 @@ function listSoftware($argv, $config)
 
     //output all software info or user selected software info
     foreach ($config as $name => $software) {
-        echo $name . PHP_EOL;
+        echo "\e[0m" . $name . PHP_EOL;
 
         //get the max string length to format & min length 20
         $padLen = array_reduce($software, function ($previousMax, $info) {
@@ -237,7 +237,7 @@ function listSoftware($argv, $config)
         }, 20);
 
         //output the header
-        echo "\t " . str_pad('version', $padLen) . ' ' .
+        echo "\e[0m\t" . str_pad('version', $padLen) . ' ' .
             str_pad('path', $padLen) . ' ' .
             str_pad('link directory', $padLen) . ' ' .
             str_pad('active', $padLen) . PHP_EOL;
